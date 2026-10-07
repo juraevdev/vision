@@ -125,6 +125,6 @@ curl -fsSL https://raw.githubusercontent.com/juraevdev/vision/master/deploy/setu
 
 Skript nginx, Python va Node.js 22 ni o‘rnatadi, kodni `/opt/vision` ga oladi, `vision-api` (FastAPI, `127.0.0.1:8005`) va `vision-web` (Next.js, `127.0.0.1:3005`) systemd xizmatlarini yaratadi hamda `vision.buildup.uz` uchun nginx proksini sozlaydi. Yangilash uchun shu buyruqni qayta ishga tushiring. `DOMAIN`, `API_PORT`, `WEB_PORT` o‘zgaruvchilari orqali sozlash mumkin.
 
-Sayt HTTPS orqali ishlasa, `COOKIE_SECURE=true` bilan ishga tushiring. Loglar: `journalctl -u vision-api -u vision-web -f`.
+Domen DNS yozuvi serverga qaratilgan bo‘lsa, skript Let’s Encrypt sertifikatini avtomatik oladi, HTTP’ni HTTPS’ga yo‘naltiradi va cookie’ni `secure` qiladi (`SSL=false` bilan o‘chirish mumkin). Loglar: `journalctl -u vision-api -u vision-web -f`.
 
 Fayl tizimi vaqtinchalik bo‘lgan hostinglarda (masalan, Render) SQLite fayli har deploy‘da o‘chib ketadi. U yerda `DATABASE_URL` orqali Postgres ulang (`postgresql+psycopg://...`) va `pip install "psycopg[binary]"` qiling.

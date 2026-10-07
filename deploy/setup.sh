@@ -9,17 +9,21 @@ APP_DIR="${APP_DIR:-/opt/vision}"
 APP_USER="${APP_USER:-vision}"
 API_PORT="${API_PORT:-8005}"
 WEB_PORT="${WEB_PORT:-3005}"
-COOKIE_SECURE="${COOKIE_SECURE:-false}"
+SSL="${SSL:-true}"
 
 [ "$(id -u)" -eq 0 ] || { echo "Skriptni root sifatida ishga tushiring." >&2; exit 1; }
 
 log() { printf '\n==> %s\n' "$*"; }
 as_app() { runuser -u "$APP_USER" -- "$@"; }
+reload_nginx() { nginx -t && { systemctl reload nginx || systemctl restart nginx; }; }
 
 log "Tizim paketlari"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
 apt-get install -y git nginx python3 python3-venv python3-pip curl ca-certificates
+if [ "$SSL" = "true" ] && ! command -v certbot >/dev/null 2>&1; then
+  apt-get install -y certbot python3-certbot-nginx
+fi
 
 node_major() { command -v node >/dev/null 2>&1 && node -p 'process.versions.node.split(".")[0]' || echo 0; }
 if [ "$(node_major)" -lt 20 ]; then
@@ -56,6 +60,75 @@ as_app "$APP_DIR/backend/.venv/bin/pip" install --quiet -r "$APP_DIR/backend/req
 
 log "Frontend (Next.js build)"
 as_app bash -c "cd '$APP_DIR' && npm ci --no-audit --no-fund && npm run build"
+
+log "nginx ($DOMAIN)"
+CERT_DIR="/etc/letsencrypt/live/$DOMAIN"
+SITE=/etc/nginx/sites-available/vision
+PROXY="    client_max_body_size 10m;
+
+    location / {
+        proxy_pass http://127.0.0.1:$WEB_PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection \"upgrade\";
+    }"
+
+if [ ! -f "$CERT_DIR/fullchain.pem" ]; then
+  cat > "$SITE" <<EOF
+server {
+    listen 80;
+    server_name $DOMAIN;
+$PROXY
+}
+EOF
+  ln -sf "$SITE" /etc/nginx/sites-enabled/vision
+  systemctl enable nginx >/dev/null
+  reload_nginx
+  if [ "$SSL" = "true" ]; then
+    log "SSL sertifikat (Let's Encrypt)"
+    certbot certonly --nginx -d "$DOMAIN" --non-interactive --agree-tos \
+      --register-unsafely-without-email --deploy-hook "systemctl reload nginx" ||
+      echo "Sertifikat olinmadi: $DOMAIN DNS yozuvi shu serverga qaratilganini tekshiring."
+  fi
+fi
+
+if [ -f "$CERT_DIR/fullchain.pem" ]; then
+  SSL_EXTRA=""
+  [ -f /etc/letsencrypt/options-ssl-nginx.conf ] &&
+    SSL_EXTRA+="    include /etc/letsencrypt/options-ssl-nginx.conf;"$'\n'
+  [ -f /etc/letsencrypt/ssl-dhparams.pem ] &&
+    SSL_EXTRA+="    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;"$'\n'
+  cat > "$SITE" <<EOF
+server {
+    listen 80;
+    server_name $DOMAIN;
+    return 301 https://\$host\$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name $DOMAIN;
+    ssl_certificate $CERT_DIR/fullchain.pem;
+    ssl_certificate_key $CERT_DIR/privkey.pem;
+${SSL_EXTRA}
+$PROXY
+}
+EOF
+  ln -sf "$SITE" /etc/nginx/sites-enabled/vision
+  reload_nginx
+  SCHEME=https
+else
+  SCHEME=http
+fi
+COOKIE_SECURE="${COOKIE_SECURE:-$([ "$SCHEME" = https ] && echo true || echo false)}"
+
+if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then
+  ufw allow 'Nginx Full' >/dev/null
+fi
 
 log "systemd xizmatlari"
 cat > /etc/systemd/system/vision-api.service <<EOF
@@ -98,34 +171,6 @@ systemctl daemon-reload
 systemctl enable vision-api vision-web >/dev/null
 systemctl restart vision-api vision-web
 
-log "nginx ($DOMAIN)"
-cat > /etc/nginx/sites-available/vision <<EOF
-server {
-    listen 80;
-    server_name $DOMAIN;
-    client_max_body_size 10m;
-
-    location / {
-        proxy_pass http://127.0.0.1:$WEB_PORT;
-        proxy_http_version 1.1;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection "upgrade";
-    }
-}
-EOF
-ln -sf /etc/nginx/sites-available/vision /etc/nginx/sites-enabled/vision
-nginx -t
-systemctl enable nginx >/dev/null
-systemctl reload nginx || systemctl restart nginx
-
-if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then
-  ufw allow 'Nginx Full' >/dev/null
-fi
-
 log "Tekshiruv"
 for _ in $(seq 1 30); do
   curl -fsS "http://127.0.0.1:$API_PORT/api/health" >/dev/null 2>&1 &&
@@ -133,6 +178,11 @@ for _ in $(seq 1 30); do
   sleep 1
 done
 echo "API:   $(curl -fsS "http://127.0.0.1:$API_PORT/api/health")"
-echo "nginx: $(curl -s -o /dev/null -w '%{http_code}' -H "Host: $DOMAIN" http://127.0.0.1/login)"
+if [ "$SCHEME" = https ]; then
+  echo "nginx: $(curl -s -o /dev/null -w '%{http_code}' --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/login")"
+else
+  echo "nginx: $(curl -s -o /dev/null -w '%{http_code}' -H "Host: $DOMAIN" http://127.0.0.1/login)"
+fi
+echo "Cookie secure: $COOKIE_SECURE"
 echo
-echo "Tayyor: http://$DOMAIN"
+echo "Tayyor: $SCHEME://$DOMAIN"

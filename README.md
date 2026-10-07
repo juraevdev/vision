@@ -1,36 +1,129 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Vision
 
-## Getting Started
+Jamoa a‘zolari o‘rtasida yangi va joriy loyihalarni boshqarish tizimi.
 
-First, run the development server:
+- **CEO** loyiha qo‘shadi (yangi yoki joriy), loyiha maqsadini yozadi va topshiriqlarni jamoa a‘zolariga taqsimlaydi.
+- **Jamoa a‘zolari** yangi loyiha qo‘shilganda va ularga topshiriq berilganda bildirishnoma oladi, o‘z topshiriqlari holatini yangilaydi.
+- Ikkala akkauntda ham bosh sahifada barcha loyihalar ro‘yxati va bajarilish foizi (progress) ko‘rinadi.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## Tuzilma
+
+```
+backend/   FastAPI + SQLAlchemy: baza, autentifikatsiya, biznes mantiq, bildirishnomalar
+src/       Next.js frontend: sahifalar va server actions, ma’lumotni backend API’dan oladi
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Frontend backendga faqat server tomonidan murojaat qiladi. Sessiya tokeni `httpOnly` cookie’da saqlanadi va har so‘rovda `Authorization: Bearer` sarlavhasi bilan yuboriladi.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Ishga tushirish
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Python 3.12+ va Node.js 20+ kerak. Ikkala xizmatni alohida terminalda ishga tushiring.
 
-## Learn More
+**1. Backend** ([http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) da Swagger hujjatlari):
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+cd backend
+python -m venv .venv
+.venv\Scripts\activate        # macOS/Linux: source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+**2. Frontend:**
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+npm install
+npm run dev
+```
 
-## Deploy on Vercel
+Brauzerda [http://localhost:3000](http://localhost:3000) ni oching. Backend boshqa manzilda bo‘lsa, `.env.local` faylida `API_URL=http://host:port` ni belgilang.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Birinchi ishga tushishda `backend/data/vision.db` (SQLite) yaratiladi va CEO akkaunti qo‘shiladi:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| Login | Parol |
+| --- | --- |
+| `ceo@vision.uz` | `vision2026` |
+
+Kirgandan so‘ng **Profil** sahifasida parolni almashtiring.
+
+## Backend sozlamalari
+
+`backend/.env` fayli orqali (namuna: `backend/.env.example`):
+
+| O‘zgaruvchi | Standart qiymat | Izoh |
+| --- | --- | --- |
+| `DATABASE_URL` | `sqlite:///backend/data/vision.db` | Istalgan SQLAlchemy URL |
+| `CORS_ORIGINS` | `http://localhost:3000,...` | Vergul bilan ajratilgan |
+| `SESSION_DAYS` | `30` | Sessiya muddati |
+| `CEO_NAME`, `CEO_EMAIL`, `CEO_PASSWORD` | `Bosh direktor`, `ceo@vision.uz`, `vision2026` | Faqat baza bo‘sh bo‘lganda ishlatiladi |
+
+## API
+
+Barcha yo‘llar `/api` bilan boshlanadi. `login`dan boshqa hammasi `Authorization: Bearer <token>` talab qiladi.
+
+| Metod va yo‘l | Kim | Vazifasi |
+| --- | --- | --- |
+| `POST /auth/login` | hamma | Token va foydalanuvchi ma’lumoti |
+| `POST /auth/logout` | hamma | Sessiyani yopish |
+| `GET` / `PATCH /auth/me` | hamma | Profilni ko‘rish va tahrirlash |
+| `POST /auth/me/password` | hamma | Parolni almashtirish (boshqa sessiyalar yopiladi) |
+| `GET /projects` | hamma | Loyihalar ro‘yxati va progress |
+| `GET /projects/{id}` | hamma | Loyiha va uning topshiriqlari |
+| `POST /projects` | CEO | Loyiha va topshiriqlarni yaratish |
+| `PUT` / `DELETE /projects/{id}` | CEO | Tahrirlash va o‘chirish |
+| `POST /projects/{id}/tasks` | CEO | Topshiriq qo‘shish |
+| `GET /tasks/mine` | hamma | Menga biriktirilgan topshiriqlar |
+| `PATCH /tasks/{id}/status` | CEO, ijrochi | Holatni o‘zgartirish |
+| `DELETE /tasks/{id}` | CEO | Topshiriqni o‘chirish |
+| `GET` / `POST /members`, `DELETE /members/{id}` | CEO | Jamoa a‘zolari |
+| `GET /notifications?limit=12` | hamma | O‘qilmaganlar soni va ro‘yxat |
+| `POST /notifications/{id}/read`, `POST /notifications/read-all` | hamma | O‘qilgan deb belgilash |
+| `GET /health` | hamma | Holat tekshiruvi |
+
+Xatolar `{"detail": "..."}` ko‘rinishida o‘zbek tilida qaytadi.
+
+## Qanday ishlaydi
+
+| Imkoniyat | CEO | Jamoa a‘zosi |
+| --- | --- | --- |
+| Loyihalar ro‘yxati va progress | ✓ | ✓ |
+| Loyiha qo‘shish, tahrirlash, o‘chirish | ✓ | |
+| Topshiriq qo‘shish va ijrochiga biriktirish | ✓ | |
+| Topshiriq holatini o‘zgartirish | barchasi | faqat o‘ziniki |
+| Jamoa a‘zolarini qo‘shish va o‘chirish | ✓ | |
+
+**Progress** = bajarilgan topshiriqlar / jami topshiriqlar.
+
+**Bildirishnomalar:**
+
+- Loyiha qo‘shilganda barcha jamoa a‘zolariga.
+- Topshiriq berilganda ijrochiga.
+- A‘zo topshiriq holatini o‘zgartirganda CEO‘ga.
+- Loyiha 100% bajarilganda CEO va ijrochilarga.
+
+Ilova har 15 soniyada yangi xabarlarni tekshiradi, sahifani avtomatik yangilaydi va ekran burchagida xabar ko‘rsatadi. Qo‘ng‘iroq menyusidan brauzer bildirishnomalarini yoqsangiz, tab yopiq turganda ham tizim xabari keladi.
+
+## Testlar
+
+```bash
+cd backend
+pip install -r requirements-dev.txt
+pytest
+```
+
+## Texnologiyalar
+
+Backend: FastAPI, SQLAlchemy 2, Pydantic 2, Uvicorn. Frontend: Next.js 16 (App Router, Server Actions), React 19, Tailwind CSS 4, Phosphor Icons.
+
+## Production
+
+```bash
+# backend
+uvicorn app.main:app --host 0.0.0.0 --port $PORT
+
+# frontend
+npm run build
+API_URL=https://api.sizning-domen.uz npm start
+```
+
+Fayl tizimi vaqtinchalik bo‘lgan hostinglarda (masalan, Render) SQLite fayli har deploy‘da o‘chib ketadi. U yerda `DATABASE_URL` orqali Postgres ulang (`postgresql+psycopg://...`) va `pip install "psycopg[binary]"` qiling.

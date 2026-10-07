@@ -1,4 +1,4 @@
-from datetime import UTC, date, datetime
+from datetime import date, datetime, timezone
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, PlainSerializer
@@ -10,7 +10,7 @@ NotificationType = Literal["project", "task", "status"]
 
 
 def _iso_utc(value: datetime) -> str:
-    return value.replace(tzinfo=UTC).isoformat().replace("+00:00", "Z")
+    return value.replace(tzinfo=timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 UTCDateTime = Annotated[datetime, PlainSerializer(_iso_utc, return_type=str)]

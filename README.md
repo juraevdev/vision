@@ -17,7 +17,7 @@ Frontend backendga faqat server tomonidan murojaat qiladi. Sessiya tokeni `httpO
 
 ## Ishga tushirish
 
-Python 3.12+ va Node.js 20+ kerak. Ikkala xizmatni alohida terminalda ishga tushiring.
+Python 3.10+ va Node.js 20+ kerak. Ikkala xizmatni alohida terminalda ishga tushiring.
 
 **1. Backend** ([http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) da Swagger hujjatlari):
 
@@ -117,13 +117,14 @@ Backend: FastAPI, SQLAlchemy 2, Pydantic 2, Uvicorn. Frontend: Next.js 16 (App R
 
 ## Production
 
-```bash
-# backend
-uvicorn app.main:app --host 0.0.0.0 --port $PORT
+Ubuntu/Debian serverda root sifatida:
 
-# frontend
-npm run build
-API_URL=https://api.sizning-domen.uz npm start
+```bash
+curl -fsSL https://raw.githubusercontent.com/juraevdev/vision/master/deploy/setup.sh | bash
 ```
+
+Skript nginx, Python va Node.js 22 ni o‘rnatadi, kodni `/opt/vision` ga oladi, `vision-api` (FastAPI, `127.0.0.1:8005`) va `vision-web` (Next.js, `127.0.0.1:3005`) systemd xizmatlarini yaratadi hamda `vision.buildup.uz` uchun nginx proksini sozlaydi. Yangilash uchun shu buyruqni qayta ishga tushiring. `DOMAIN`, `API_PORT`, `WEB_PORT` o‘zgaruvchilari orqali sozlash mumkin.
+
+Sayt HTTPS orqali ishlasa, `COOKIE_SECURE=true` bilan ishga tushiring. Loglar: `journalctl -u vision-api -u vision-web -f`.
 
 Fayl tizimi vaqtinchalik bo‘lgan hostinglarda (masalan, Render) SQLite fayli har deploy‘da o‘chib ketadi. U yerda `DATABASE_URL` orqali Postgres ulang (`postgresql+psycopg://...`) va `pip install "psycopg[binary]"` qiling.
